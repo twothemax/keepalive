@@ -1,0 +1,19 @@
+name: Render keep-warm
+ 
+on:
+  schedule:
+    - cron: "*/10 * * * *"   # every 10 min (GitHub often runs late, so this leaves buffer under Render's 15-min sleep)
+  workflow_dispatch:
+ 
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Hit the VC tracker site
+        env:
+          URL: ${{ secrets.RENDER_VCF_URL }}
+        run: |
+          curl -s -o /dev/null --max-time 90 --retry 2 \
+            -w "HTTP %{http_code} in %{time_total}s\n" "$URL" || true
+ 
