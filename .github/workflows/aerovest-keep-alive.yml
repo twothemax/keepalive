@@ -1,0 +1,22 @@
+# Keeps the live AeroVest site awake during the day, so visitors don't wait about a minute for Render's free
+# service to wake up.
+#
+# Every 10 minutes from 7:00 to midnight U.S. Eastern (summer time; 6:00 to 23:00 in winter), it asks the site for
+# Delta's company record: one small, read-only database query, so it keeps AeroVest's Supabase project active too.
+# Render's free tier sleeps after 15 minutes without visitors, so a 10-minute gap keeps it awake. About 17 hours a
+# day is about 530 of Render's 750 free hours a month. Overnight the site sleeps and wakes on the first visit.
+# GitHub can start scheduled runs a few minutes late, so an occasional cold start is still possible.
+name: AeroVest keep-alive
+
+on:
+  schedule:
+    - cron: "*/10 11-23,0-3 * * *"   # UTC: 11:00 to 03:50 = 7:00 to 23:50 Eastern summer time
+  workflow_dispatch:                 # a "Run workflow" button, to test it by hand
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ask the site for Delta's company record
+        run: curl --silent --show-error --fail --max-time 120 --retry 2 --retry-delay 20 https://aerovest-ai.onrender.com/api/company/DAL > /dev/null
