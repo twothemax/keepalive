@@ -1,0 +1,54 @@
+# Keeps the live Breakaway site awake from midday through the evening games, so a visitor (or a recruiter) doesn't wait
+# about a minute for Render's free service to wake up. Copy this file into your keep-alive repo as
+# .github/workflows/breakaway-keep-alive.yml (the same repo that runs aerovest-keep-alive.yml).
+#
+# When it pings: every 10 minutes from 12:00 pm to 10:59 pm US Eastern, every day, October through June. Render's free
+# tier sleeps after 15 minutes without visitors, so a 10-minute gap keeps it awake. Late West Coast games don't need
+# pinging after 11 pm: anyone with a live game open keeps the site awake, because the page refreshes it every 30
+# seconds. Outside these hours, and all of July to September, the site sleeps and wakes on the first visit.
+#
+# Render budget. Render's 750 free hours a month are shared by every free service in your workspace, and going over
+# suspends ALL of them (AeroVest too) until the next month:
+#   AeroVest's keep-alive (updated 2026-10-20) pings 8:00 am-7:50 pm Central, so it's awake ~12.1 h a day:
+#     362.5 h in a 30-day month, 374.6 h in a 31-day month.
+#   This keep-alive: 11 h a day, plus ~15 min awake after the last ping = 11.25 h a day:
+#     30-day month   337.5 h  -> total 700.0 h, 50.0 h spare
+#     31-day month   348.8 h  -> total 723.3 h, 26.7 h spare (the worst case)
+#   The spare hours cover visits outside both windows (each one keeps a site awake 15+ minutes). The sums are upper
+#   bounds: GitHub sometimes starts scheduled runs late, which can only shorten awake time. Pinging until midnight
+#   would go over (~754 h in a 31-day month). If you change either keep-alive, redo the sum first.
+#
+# GitHub Actions minutes: about 2,200 runs a month in season (each billed as at least 1 minute); AeroVest's adds about
+# 2,400. Public repos run for free. In a private repo the free plan includes about 2,000 minutes a month, so check
+# Settings -> Billing -> Actions usage before turning this on.
+#
+# It asks only /api/health: the cheapest request, with no NHL API call, so it can't fail because the NHL feed is
+# slow. Any request keeps a Render service awake.
+name: Breakaway keep-alive
+
+on:
+  schedule:
+    # GitHub cron runs in UTC, and Eastern time shifts by an hour between summer (EDT, UTC-4) and winter (EST, UTC-5).
+    # 12:00-10:59 pm Eastern is 16:00-02:59 UTC in summer and 17:00-03:59 UTC in winter, so the schedule covers
+    # 16:00-03:59 UTC and the step below checks the real Eastern hour. Months 10-12,1-6 = October-June.
+    - cron: "*/10 16-23,0-3 * 10-12,1-6 *"
+  workflow_dispatch:                          # a "Run workflow" button, to test it by hand (always pings)
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Ping Breakaway, 12:00 pm to 10:59 pm Eastern
+        run: |
+          hour=$(TZ=America/New_York date +%-H)   # 0-23, Eastern
+          start=12                                # noon
+          end=23                                  # stop at 11:00 pm
+          if [ "${{ github.event_name }}" != "workflow_dispatch" ] && { [ "$hour" -lt "$start" ] || [ "$hour" -ge "$end" ]; }; then
+            echo "It's ${hour}:xx Eastern, outside ${start}:00-${end}:00. Not pinging."
+            exit 0
+          fi
+          # --max-time 120 allows for a cold start; --fail makes the run show red if the site answers with an error
+          curl --silent --show-error --fail --max-time 120 --retry 2 --retry-delay 20 \
+            https://breakaway-6lab.onrender.com/api/health > /dev/null
+          echo "Pinged Breakaway at ${hour}:xx Eastern."
