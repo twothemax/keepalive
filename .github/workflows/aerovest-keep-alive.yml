@@ -1,22 +1,31 @@
-# Keeps the live AeroVest site awake during the day, so visitors don't wait about a minute for Render's free
-# service to wake up.
+# Keeps the live AeroVest site awake during the day, so visitors don't wait about a minute for Render's free service
+# to wake up.
 #
-# Every 10 minutes from 7:00 to midnight U.S. Eastern (summer time; 6:00 to 23:00 in winter), it asks the site for
-# Delta's company record: one small, read-only database query, so it keeps AeroVest's Supabase project active too.
-# Render's free tier sleeps after 15 minutes without visitors, so a 10-minute gap keeps it awake. About 17 hours a
-# day is about 530 of Render's 750 free hours a month. Overnight the site sleeps and wakes on the first visit.
-# GitHub can start scheduled runs a few minutes late, so an occasional cold start is still possible.
+# Every 10 minutes from 8:00 to 20:00 U.S. Central time, all year, it asks the site for Delta's company record: one
+# small, read-only database query, so it keeps AeroVest's Supabase project active too. Render's free tier sleeps after
+# 15 minutes without visitors, so a 10-minute gap keeps it awake. 12 hours a day is about 365 of Render's 750 free
+# hours a month, which leaves room for another project's service. Outside the window the site sleeps and wakes on the
+# first visit.
+# GitHub's schedule only knows UTC, and Central time moves by an hour twice a year, so the schedule covers both
+# (13:00 to 01:50 UTC) and the step pings only when it is 8:00 to 19:59 in Chicago; the other runs do nothing.
 name: AeroVest keep-alive
 
 on:
   schedule:
-    - cron: "*/10 11-23,0-3 * * *"   # UTC: 11:00 to 03:50 = 7:00 to 23:50 Eastern summer time
-  workflow_dispatch:                 # a "Run workflow" button, to test it by hand
+    - cron: "*/10 13-23,0-1 * * *"   # UTC: 8:00-20:50 CDT in summer, 7:00-19:50 CST in winter; the step trims to 8-20
+  workflow_dispatch:                 # a "Run workflow" button, to test it by hand (it pings only within the window too)
 
 jobs:
   ping:
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - name: Ask the site for Delta's company record
-        run: curl --silent --show-error --fail --max-time 120 --retry 2 --retry-delay 20 https://aerovest-ai.onrender.com/api/company/DAL > /dev/null
+      - name: Ask the site for Delta's company record, 8:00 to 20:00 Central
+        run: |
+          hour=$(TZ=America/Chicago date +%H)
+          if [ "$hour" -ge 8 ] && [ "$hour" -lt 20 ]; then
+            curl --silent --show-error --fail --max-time 120 --retry 2 --retry-delay 20 https://aerovest-ai.onrender.com/api/company/DAL > /dev/null
+            echo "Pinged AeroVest at ${hour}:xx Central."
+          else
+            echo "It is ${hour}:xx in Chicago, outside 8:00-20:00 Central: no ping, so the site may sleep."
+          fi
